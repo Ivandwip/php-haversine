@@ -14,32 +14,7 @@ if (isset($_SESSION['userLatitude']) && isset($_SESSION['userLongitude'])) {
   $userLongitude = $_SESSION['userLongitude'];
 }
 
-// Instantiate the Haversine class
-$haversine = new Haversine();
-$data = file_get_contents('http://localhost/SIG-LOKASI-1/ambildata.php');
-$locations = []; // Array untuk menyimpan lokasi dan jaraknya
-$no = 1;
-if (json_decode($data, true)) {
-    $obj = json_decode($data);
-    foreach ($obj->results as $item) {
-        $distance = $haversine->calculateDistance($userLatitude, $userLongitude, $item->latitude, $item->longitude);
 
-        // Simpan semua data ke dalam array
-        $locations[] = [
-            'no' => $no,
-            'nama_lokasi' => $item->nama_lokasi,
-            'alamat' => $item->alamat,
-            'distance' => $distance,
-            'id_lokasi' => $item->id_lokasi
-        ];
-        $no++;
-    }
-} else {
-    echo "Data tidak ada.";
-}
-usort($locations, function ($a, $b) {
-  return $a['distance'] <=> $b['distance']; // Ascending order
-});
 ?>
 
 <!-- start banner Area -->
@@ -60,21 +35,18 @@ usort($locations, function ($a, $b) {
 
 <!-- End banner Area -->
 <!-- Start about-info Area -->
+<!-- In your existing PHP file where the location data is displayed -->
 <section class="about-info-area section-gap">
   <div class="container">
     <div class="row align-items-center">
-      <div class="col-lg-6 info-left">
-        <img class="img-fluid" src="img/about/info-img.jpg" alt="">
-      </div>
-
       <div class="col-lg-30 into-right" data-aos="fade-up" data-aos-delay="100">
-
         <div class="col-md-12">
           <div class="panel panel-info panel-dashboard">
-            <div class="panel-heading centered">
-
-            </div>
             <div class="panel-body">
+            <div id="loading" style="text-align: center;">
+              <img src="loading-spinner.gif" alt="Loading..." style="display: none;" id="loadingSpinner" />
+              <p id="loadingText">Loading data, please wait...</p>
+            </div>
               <table class="table table-bordered table-striped table-admin">
                 <thead>
                   <tr>
@@ -84,90 +56,156 @@ usort($locations, function ($a, $b) {
                     <th>Aksi</th>
                   </tr>
                 </thead>
-                <tbody>
-                  <?php
-    if (!empty($locations)) {
-        foreach ($locations as $location) {
-    ?>
-                  <tr>
-                    <td><?php echo $location['nama_lokasi']; ?></td>
-                    <td><?php echo $location['alamat']; ?></td>
-                    <td><?php echo number_format($location['distance'], 2); ?> KM</td>
-                    <td class="ctr">
-                      <div class="btn-group">
-                        <a href="detail.php?id_lokasi=<?php echo $location['id_lokasi']; ?>" rel="tooltip"
-                          data-original-title="Lihat File" data-placement="top" class="btn btn-success">
-                          <i class="fa fa-map-marker"> </i> Detail dan Lokasi
-                        </a>&nbsp;
-                      </div>
-                    </td>
-                  </tr>
-                  <?php
-        }
-    } else {
-        echo "<tr><td colspan='5'>Data tidak ada.</td></tr>";
-    }
-    ?>
+                <tbody id="locationTableBody">
+                  <!-- Locations will be dynamically updated here -->
                 </tbody>
               </table>
             </div>
           </div>
         </div>
-
       </div>
     </div>
   </div>
 </section>
 <!-- End about-info Area -->
 <script>
-  // Get the user's current location
-  function getUserLocation() {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(sendLocationToServer, showError);
-    } else {
-      alert("Geolocation is not supported by this browser.");
-    }
-  }
+// Declare userLatitude and userLongitude globally
+let userLatitude = <?php echo $userLatitude; ?>;
+let userLongitude = <?php echo $userLongitude; ?>;
 
-  function sendLocationToServer(position) {
-    const latitude = position.coords.latitude;
-    const longitude = position.coords.longitude;
+// Get the user's current location in real-time
+function getUserLocation() {
+    if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(sendLocationToServer, showError, {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 0
+        });
+    } else {
+        alert("Geolocation is not supported by this browser.");
+    }
+}
+
+// Send the latitude and longitude to the server via AJAX
+function sendLocationToServer(position) {
+    userLatitude = position.coords.latitude;
+    userLongitude = position.coords.longitude;
 
     // Use AJAX to send the data to the server
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "save_location.php", true); // URL to PHP file that handles location data
+    xhr.open("POST", "save_location.php", true);
     xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
 
     // Send the latitude and longitude to PHP
-    xhr.send("latitude=" + latitude + "&longitude=" + longitude);
+    xhr.send("latitude=" + userLatitude + "&longitude=" + userLongitude);
 
     xhr.onreadystatechange = function () {
-      if (xhr.readyState == 4 && xhr.status == 200) {
-        // Handle the response from PHP if necessary
-        console.log("Location sent to server: " + xhr.responseText);
-      }
+        if (xhr.readyState == 4 && xhr.status == 200) {
+            console.log("Location sent to server: " + xhr.responseText);
+            }
     };
-  }
+}
 
-  function showError(error) {
+// Handle location errors
+function showError(error) {
     switch (error.code) {
-      case error.PERMISSION_DENIED:
+        case error.PERMISSION_DENIED:
         alert("User denied the request for Geolocation.");
         break;
-      case error.POSITION_UNAVAILABLE:
+        case error.POSITION_UNAVAILABLE:
         alert("Location information is unavailable.");
         break;
-      case error.TIMEOUT:
+        case error.TIMEOUT:
         alert("The request to get user location timed out.");
         break;
-      case error.UNKNOWN_ERROR:
+        case error.UNKNOWN_ERROR:
         alert("An unknown error occurred.");
         break;
     }
-  }
+}
 
-  // Call the function to get user location when the page loads
-  getUserLocation();
+// Refresh location data every 10 seconds
+function refreshLocations() {
+// Show loading spinner
+document.getElementById('loadingSpinner').style.display = 'block';
+document.getElementById('loadingText').style.display = 'block';
+
+$.ajax({
+url: 'http://localhost/php-haversine/ambildata.php', // Replace with your actual data endpoint
+type: 'GET',
+dataType: 'json',
+success: function (data) {
+const tableBody = document.getElementById('locationTableBody');
+tableBody.innerHTML = ''; // Clear current content
+
+if (data && data.results) {
+// Array to hold locations with their calculated distance
+const locationsWithDistance = [];
+
+// Calculate distance for each location and store in the array
+data.results.forEach((location) => {
+const distance = calculateDistance(userLatitude, userLongitude, location.latitude, location.longitude);
+locationsWithDistance.push({
+...location,
+distance: distance
+});
+});
+
+// Sort locations by distance (ascending)
+locationsWithDistance.sort((a, b) => a.distance - b.distance);
+
+// Hide loading spinner once data is loaded
+document.getElementById('loadingSpinner').style.display = 'none';
+document.getElementById('loadingText').style.display = 'none';
+
+// Now populate the table with sorted data
+locationsWithDistance.forEach((location) => {
+const row = `
+<tr>
+  <td>${location.nama_lokasi}</td>
+  <td>${location.alamat}</td>
+  <td>${location.distance.toFixed(2)} KM</td>
+  <td>
+    <a href="detail.php?id_lokasi=${location.id_lokasi}" class="btn btn-success">
+      <i class="fa fa-map-marker"></i> Detail dan Lokasi
+    </a>
+  </td>
+</tr>`;
+tableBody.innerHTML += row;
+});
+}
+},
+error: function () {
+alert('Failed to refresh locations');
+
+// Hide loading spinner in case of error
+document.getElementById('loadingSpinner').style.display = 'none';
+document.getElementById('loadingText').style.display = 'none';
+}
+});
+}
+
+// Automatically refresh locations every 10 seconds
+setInterval(refreshLocations, 10000);
+
+// Call refreshLocations when the page first loads to display the initial data
+window.onload = refreshLocations;
+
+
+// Function to calculate distance (optional, if done on the client side)
+function calculateDistance(lat1, lon1, lat2, lon2) {
+const R = 6371; // Radius of the Earth in kilometers
+const dLat = (lat2 - lat1) * (Math.PI / 180);
+const dLon = (lon2 - lon1) * (Math.PI / 180);
+const a =
+Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+Math.sin(dLon / 2) * Math.sin(dLon / 2);
+const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+const distance = R * c; // Distance in kilometers
+return distance;
+}
+
 </script>
 
 <?php include "footer.php"; ?>

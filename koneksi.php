@@ -1,7 +1,7 @@
 <?php
 $host = "localhost";
 $user = "root";
-$pass = "";
+$pass = "root";
 $name = "bank_sampah";
 
 $koneksi = mysqli_connect($host, $user, $pass, $name);

@@ -1,17 +1,17 @@
 <?php
-if (isset($_POST['latitude']) && isset($_POST['longitude'])) {
-  // Get the user's latitude and longitude
-  $userLatitude = $_POST['latitude'];
-  $userLongitude = $_POST['longitude'];
+session_start();
 
-  // Store the user's location in the session or handle as needed
-  session_start();
-  $_SESSION['userLatitude'] = $userLatitude;
-  $_SESSION['userLongitude'] = $userLongitude;
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    if (isset($_POST['latitude']) && isset($_POST['longitude'])) {
+        // Store the latitude and longitude in the session
+        $_SESSION['userLatitude'] = $_POST['latitude'];
+        $_SESSION['userLongitude'] = $_POST['longitude'];
 
-  // Optionally, return a success message
-  echo "Location received: Latitude = $userLatitude, Longitude = $userLongitude";
-} else {
-  echo "No location data received.";
+        echo "Location saved successfully";
+        } else {
+        echo "Location data is missing";
+        }
+        } else {
+        echo "Invalid request method";
 }
 ?>
